@@ -42,7 +42,6 @@ export const COLOR_TRIAL = "#13c2c2";
 /** Contenedor raíz del visualizador */
 export const rootContainer: CSSProperties = {
   fontFamily: "'IBM Plex Mono', 'Fira Code', monospace",
-  maxWidth: 1100,
   margin: "0 auto",
   padding: "1.5rem 1rem",
 };

@@ -45,7 +45,7 @@ export default function ViewMatrix({ data, documents }: ViewMatrixProps) {
       dataIndex: "term",
       key: "term",
       fixed: "left",
-      width: 130,
+      width: 180,
       render: (v: string) => <Text code>{v}</Text>,
     },
     ...documents.map((d, i) => ({

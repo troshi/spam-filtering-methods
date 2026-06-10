@@ -45,7 +45,6 @@ export const DOC_BORDER: string[] = [
 /** Contenedor raíz del visualizador */
 export const rootContainer: CSSProperties = {
   fontFamily: "'IBM Plex Mono', 'Fira Code', monospace",
-  maxWidth: 900,
   margin: "0 auto",
   padding: "1.5rem 1rem",
 };
