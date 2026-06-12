@@ -1,137 +1,114 @@
 /**
  * useTFIDF.ts
  *
- * Hook personalizado que encapsula toda la lógica de cálculo TF-IDF.
+ * Hook que encapsula el cálculo TF-IDF completo con el pipeline de preprocesamiento.
  *
- * Funciones internas:
- *  - tokenize : convierte un texto en tokens limpios en minúsculas
- *  - calcTF   : calcula la frecuencia normalizada de cada término en un documento
- *  - calcIDF  : calcula la frecuencia inversa de documentos de un término
+ * Pipeline aplicado por documento antes de calcular TF/IDF:
+ *   Texto → Lowercase → Tokenización → Stopword Removal → Lemmatización → TF-IDF
  *
- * El hook `useTFIDF`:
- *  - Recibe una lista de documentos
- *  - Devuelve un objeto `TFIDFData` con todas las métricas listas para renderizar
- *  - Usa `useMemo` para evitar recalcular si los documentos no cambian
+ * Funciones:
+ *  - calcTF   : TF(t,d) = frecuencias de aparición normalizadas
+ *  - calcIDF  : IDF(t)  = log(N / df(t))
+ *
+ * El hook devuelve `TFIDFData` enriquecido con las etapas del pipeline
+ * para que el visualizador pueda mostrar cada paso.
  */
 
 import { useMemo } from "react";
+import { preprocessText, preprocessToLemmas } from "../../../utils/preprocess.ts";
 import type { Document, TFIDFData } from "./types";
-
-// ── Tokenización ───────────────────────────────────────────────────────────────
-
-/**
- * Convierte un texto en una lista de tokens:
- *  1. Pasa todo a minúsculas
- *  2. Elimina caracteres que no sean letras, dígitos o espacios
- *  3. Divide por espacios y descarta tokens vacíos
- *
- * Ejemplo: "Hello, World!" → ["hello", "world"]
- */
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .split(/\s+/)
-    .filter(Boolean);
-}
 
 // ── Term Frequency ─────────────────────────────────────────────────────────────
 
 /**
- * Calcula el TF (Term Frequency) de todos los términos de un documento.
+ * Calcula el TF de todos los lemas de un documento ya preprocesado.
  *
- * TF(t, d) = (número de veces que t aparece en d) / (total de tokens en d)
+ * TF(t, d) = apariciones(t, d) / total de lemas en d
  *
- * Devuelve: { término → frecuencia normalizada }
+ * @param lemmas  Lista de lemas resultante del pipeline
  */
-function calcTF(doc: Document): Record<string, number> {
-  const tokens = tokenize(doc.text);
+function calcTF(lemmas: string[]): Record<string, number> {
   const counts: Record<string, number> = {};
-
-  // Contar apariciones de cada token
-  for (const token of tokens) {
-    counts[token] = (counts[token] ?? 0) + 1;
+  for (const lemma of lemmas) {
+    counts[lemma] = (counts[lemma] ?? 0) + 1;
   }
-
-  const total = tokens.length;
+  const total = lemmas.length;
   const tf: Record<string, number> = {};
-
-  // Normalizar dividiendo entre el total de tokens
-  for (const token in counts) {
-    tf[token] = counts[token] / total;
+  for (const lemma in counts) {
+    tf[lemma] = counts[lemma] / total;
   }
-
   return tf;
 }
 
 // ── Inverse Document Frequency ─────────────────────────────────────────────────
 
 /**
- * Calcula el IDF (Inverse Document Frequency) de un término sobre una colección.
+ * Calcula el IDF de un término sobre la colección de documentos preprocesados.
  *
  * IDF(t) = log(N / df(t))
- *   N   = número total de documentos
- *   df  = número de documentos que contienen el término
+ *   N  = número total de documentos
+ *   df = documentos que contienen el término
  *
- * Un IDF alto → término poco frecuente → alta capacidad discriminativa.
- * Devuelve 0 si el término no aparece en ningún documento.
+ * @param term      Lema a evaluar
+ * @param lemmasAll Array de lemas por documento
  */
-function calcIDF(term: string, documents: Document[]): number {
-  const df = documents.filter((d) => tokenize(d.text).includes(term)).length;
-  return df === 0 ? 0 : Math.log(documents.length / df);
+function calcIDF(term: string, lemmasAll: string[][]): number {
+  const df = lemmasAll.filter((lemmas) => lemmas.includes(term)).length;
+  return df === 0 ? 0 : Math.log(lemmasAll.length / df);
 }
 
 // ── Hook principal ─────────────────────────────────────────────────────────────
 
 /**
- * Calcula todas las métricas TF-IDF para una colección de documentos.
+ * Calcula TF-IDF para una colección de documentos aplicando el pipeline completo.
  *
  * Retorna `TFIDFData`:
- *  - allTerms     : vocabulario completo ordenado alfabéticamente
- *  - tfAll        : array de mapas TF, uno por documento
- *  - idfMap       : { término → IDF }
- *  - dfMap        : { término → document frequency }
- *  - tfidfMatrix  : array de mapas TF-IDF, uno por documento
- *  - maxTFIDF     : valor máximo en toda la matriz (para normalizar barras)
- *  - maxTF        : valor TF máximo global (para normalizar barras)
- *  - maxIDF       : valor IDF máximo global (para normalizar barras)
+ *  - allTerms      : vocabulario de lemas únicos, ordenado alfabéticamente
+ *  - tfAll         : array de mapas TF (por lemas), uno por documento
+ *  - idfMap        : { lema → IDF }
+ *  - dfMap         : { lema → document frequency }
+ *  - tfidfMatrix   : array de mapas TF-IDF, uno por documento
+ *  - maxTFIDF/maxTF/maxIDF : valores máximos para normalizar barras visuales
+ *  - pipelineSteps : etapas del pipeline por documento (para el visualizador)
  */
 export function useTFIDF(documents: Document[]): TFIDFData {
   return useMemo(() => {
-    // Vocabulario: todos los tokens únicos de todos los documentos
-    const allTerms = [
-      ...new Set(documents.flatMap((d) => tokenize(d.text))),
-    ].sort();
+    // ── Paso 1-4: Aplicar el pipeline completo a cada documento ──────────────
+    const pipelineSteps = documents.map((doc) => preprocessText(doc.text));
 
-    // TF de cada documento
-    const tfAll = documents.map(calcTF);
+    // Lemas finales por documento (entrada para TF-IDF)
+    const lemmasAll: string[][] = pipelineSteps.map((s) => s.lemmas);
 
-    // IDF de cada término del vocabulario
+    // ── Vocabulario ───────────────────────────────────────────────────────────
+    const allTerms = [...new Set(lemmasAll.flat())].sort();
+
+    // ── TF por documento ──────────────────────────────────────────────────────
+    const tfAll = lemmasAll.map(calcTF);
+
+    // ── IDF global ────────────────────────────────────────────────────────────
     const idfMap = Object.fromEntries(
-      allTerms.map((t) => [t, calcIDF(t, documents)])
+      allTerms.map((t) => [t, calcIDF(t, lemmasAll)])
     );
 
-    // Document Frequency de cada término
+    // ── Document Frequency ────────────────────────────────────────────────────
     const dfMap = Object.fromEntries(
       allTerms.map((t) => [
         t,
-        documents.filter((d) => tokenize(d.text).includes(t)).length,
+        lemmasAll.filter((lemmas) => lemmas.includes(t)).length,
       ])
     );
 
-    // Matriz TF-IDF: TF(t, d) × IDF(t) para cada (término, documento)
-    const tfidfMatrix = documents.map((_, i) =>
+    // ── Matriz TF-IDF: TF(t,d) × IDF(t) ─────────────────────────────────────
+    const tfidfMatrix = lemmasAll.map((_, i) =>
       Object.fromEntries(
         allTerms.map((t) => [t, (tfAll[i][t] ?? 0) * idfMap[t]])
       )
     );
 
-    // Valores máximos globales (usados para escalar las barras de progreso)
-    const maxTFIDF = Math.max(
-      ...tfidfMatrix.flatMap((row) => Object.values(row))
-    );
-    const maxTF = Math.max(...tfAll.flatMap((row) => Object.values(row)));
-    const maxIDF = Math.max(...Object.values(idfMap));
+    // ── Valores máximos para escalar barras ───────────────────────────────────
+    const maxTFIDF = Math.max(...tfidfMatrix.flatMap((row) => Object.values(row)));
+    const maxTF    = Math.max(...tfAll.flatMap((row) => Object.values(row)));
+    const maxIDF   = Math.max(...Object.values(idfMap));
 
     return {
       allTerms,
@@ -142,6 +119,10 @@ export function useTFIDF(documents: Document[]): TFIDFData {
       maxTFIDF,
       maxTF,
       maxIDF,
+      pipelineSteps,
     };
   }, [documents]);
 }
+
+// Exportar también la función de tokenización para uso externo
+export { preprocessToLemmas as tokenize };

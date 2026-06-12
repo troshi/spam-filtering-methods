@@ -3,19 +3,18 @@
  *
  * Componente orquestador del visualizador TF-IDF.
  *
- * Responsabilidades:
- *  1. Recibir (o usar por defecto) la lista de documentos a analizar.
- *  2. Ejecutar el hook `useTFIDF` que centraliza todos los cálculos.
- *  3. Renderizar las cuatro vistas a través de un `Tabs` de Ant Design:
- *       - ViewTFIDF  → TF-IDF por documento
- *       - ViewMatrix → Matriz completa con heatmap
- *       - ViewTF     → TF por documento
- *       - ViewIDF    → IDF global del vocabulario
+ * Pestañas:
+ *  0. Pipeline       → etapas de preprocesamiento por documento
+ *  1. TF-IDF         → scores por documento
+ *  2. Matriz         → heatmap completo términos × documentos
+ *  3. TF             → frecuencia normalizada por documento
+ *  4. IDF            → frecuencia inversa global
  */
 
 import { useState } from "react";
 import { Tabs, Typography } from "antd";
 import { useTFIDF } from "./useTFIDF.ts";
+import ViewPipeline from "./ViewPipeline";
 import ViewTFIDF from "./ViewTFIDF";
 import ViewMatrix from "./ViewMatrix";
 import ViewTF from "./ViewTF";
@@ -25,44 +24,34 @@ import type { Document } from "./types";
 
 const { Title, Text } = Typography;
 
-// ── Documentos de ejemplo ──────────────────────────────────────────────────────
-// Se usan cuando el componente padre no proporciona una lista de documentos.
 const DEFAULT_DOCUMENTS: Document[] = [
   { id: 1, text: "This is a document about TypeScript." },
-  {
-    id: 2,
-    text: "TypeScript is a programming language developed by Microsoft.",
-  },
-  {
-    id: 3,
-    text: "JavaScript is another programming language often used with TypeScript.",
-  },
-  {
-    id: 4,
-    text: "TF-IDF stands for Term Frequency-Inverse Document Frequency.",
-  },
+  { id: 2, text: "TypeScript is a programming language developed by Microsoft." },
+  { id: 3, text: "JavaScript is another programming language often used with TypeScript." },
+  { id: 4, text: "TF-IDF stands for Term Frequency-Inverse Document Frequency." },
 ];
 
-// ── Props ──────────────────────────────────────────────────────────────────────
 export interface TFIDFVisualizerProps {
-  /** Lista de documentos a analizar. Si se omite se usan los documentos de ejemplo. */
   documents?: Document[];
 }
 
-/**
- * Punto de entrada del módulo TF-IDF.
- * Calcula todos los datos una sola vez con `useTFIDF` y los pasa a cada vista.
- */
 export default function TFIDFVisualizer({
   documents = DEFAULT_DOCUMENTS,
 }: TFIDFVisualizerProps) {
-  const [activeTab, setActiveTab] = useState<string>("tfidf");
-
-  // Todos los cálculos TF, IDF y TF-IDF están memoizados en este hook
+  const [activeTab, setActiveTab] = useState<string>("pipeline");
   const data = useTFIDF(documents);
 
-  // Definición declarativa de las pestañas
   const tabItems = [
+    {
+      key: "pipeline",
+      label: "Pipeline",
+      children: (
+        <ViewPipeline
+          documents={documents}
+          pipelineSteps={data.pipelineSteps}
+        />
+      ),
+    },
     {
       key: "tfidf",
       label: "TF-IDF por documento",
@@ -87,17 +76,16 @@ export default function TFIDFVisualizer({
 
   return (
     <div style={rootContainer}>
-      {/* Encabezado: título y estadísticas del corpus */}
       <div style={headerBlock}>
         <Title level={3} style={{ margin: "0 0 4px" }}>
           TF-IDF Explorer
         </Title>
         <Text type="secondary" style={{ fontSize: 13 }}>
           {documents.length} documentos · {data.allTerms.length} términos únicos
+          · pipeline: lowercase → tokenización → stopwords → lematización
         </Text>
       </div>
 
-      {/* Pestañas de las cuatro vistas */}
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
