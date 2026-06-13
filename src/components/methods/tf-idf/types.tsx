@@ -13,6 +13,8 @@ export type { PreprocessResult };
 export interface Document {
   id: number;
   text: string;
+  /** Etiqueta original del dataset: "ham" (legítimo) o "spam" */
+  label?: "ham" | "spam";
 }
 
 /** Puntuación TF-IDF de un término en un documento */
